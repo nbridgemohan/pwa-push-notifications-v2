@@ -1,6 +1,69 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import Image from "next/image";
 
 export default function Home() {
+  const [subscription, setSubscription] = useState<PushSubscription | null>(null);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+
+  useEffect(() => {
+    if ('serviceWorker' in navigator && 'PushManager' in window) {
+      checkSubscription();
+    }
+  }, []);
+
+  const checkSubscription = async () => {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      setSubscription(subscription);
+      setIsSubscribed(!!subscription);
+    } catch (error) {
+      console.error('Error checking subscription:', error);
+    }
+  };
+
+  const subscribeToPush = async () => {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+      });
+      setSubscription(subscription);
+      setIsSubscribed(true);
+      
+      // Send subscription to backend
+      await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(subscription),
+      });
+    } catch (error) {
+      console.error('Error subscribing to push:', error);
+    }
+  };
+
+  const sendPushNotification = async () => {
+    try {
+      await fetch('/api/push/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          subscription,
+          message: 'Hello! This is a push notification!',
+        }),
+      });
+    } catch (error) {
+      console.error('Error sending push notification:', error);
+    }
+  };
+
   return (
     <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
@@ -49,6 +112,24 @@ export default function Home() {
           >
             Read our docs
           </a>
+        </div>
+
+        <div className="space-y-4">
+          {!isSubscribed ? (
+            <button
+              onClick={subscribeToPush}
+              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+            >
+              Subscribe to Push Notifications
+            </button>
+          ) : (
+            <button
+              onClick={sendPushNotification}
+              className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+            >
+              Send Push Notification
+            </button>
+          )}
         </div>
       </main>
       <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
