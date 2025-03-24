@@ -6,50 +6,78 @@ import Image from "next/image";
 export default function Home() {
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if ('serviceWorker' in navigator && 'PushManager' in window) {
+      console.log('Service Worker and Push API are supported');
       checkSubscription();
+    } else {
+      console.error('Service Worker or Push API not supported');
+      setError('Push notifications are not supported in your browser');
     }
   }, []);
 
   const checkSubscription = async () => {
     try {
+      console.log('Checking subscription...');
       const registration = await navigator.serviceWorker.ready;
+      console.log('Service Worker is ready');
       const subscription = await registration.pushManager.getSubscription();
+      console.log('Current subscription:', subscription);
       setSubscription(subscription);
       setIsSubscribed(!!subscription);
     } catch (error) {
       console.error('Error checking subscription:', error);
+      setError('Failed to check subscription status');
     }
   };
 
   const subscribeToPush = async () => {
     try {
+      console.log('Starting subscription process...');
       const registration = await navigator.serviceWorker.ready;
+      console.log('Service Worker is ready for subscription');
+      
+      if (!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY) {
+        throw new Error('VAPID public key is not configured');
+      }
+
+      console.log('Subscribing with VAPID key:', process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY);
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
       });
+      
+      console.log('Subscription successful:', subscription);
       setSubscription(subscription);
       setIsSubscribed(true);
       
       // Send subscription to backend
-      await fetch('/api/push/subscribe', {
+      console.log('Sending subscription to backend...');
+      const response = await fetch('/api/push/subscribe', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(subscription),
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to save subscription on server');
+      }
+
+      console.log('Subscription saved on server');
     } catch (error) {
       console.error('Error subscribing to push:', error);
+      setError(error instanceof Error ? error.message : 'Failed to subscribe to push notifications');
     }
   };
 
   const sendPushNotification = async () => {
     try {
-      await fetch('/api/push/send', {
+      console.log('Sending push notification...');
+      const response = await fetch('/api/push/send', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -59,8 +87,15 @@ export default function Home() {
           message: 'Hello! This is a push notification!',
         }),
       });
+
+      if (!response.ok) {
+        throw new Error('Failed to send push notification');
+      }
+
+      console.log('Push notification sent successfully');
     } catch (error) {
       console.error('Error sending push notification:', error);
+      setError(error instanceof Error ? error.message : 'Failed to send push notification');
     }
   };
 
@@ -115,6 +150,11 @@ export default function Home() {
         </div>
 
         <div className="space-y-4">
+          {error && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+              <span className="block sm:inline">{error}</span>
+            </div>
+          )}
           {!isSubscribed ? (
             <button
               onClick={subscribeToPush}
